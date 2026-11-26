@@ -780,10 +780,10 @@ function slider({label,min,max,step=.01,get,set,def=0,fmt=v=>Math.round(v*100),c
   const paint=()=>{const v=+i.value,p=x=>(x-min)/(max-min)*100,a=p(center),b=p(v);
     i.style.setProperty('--s',Math.min(a,b)+'%');i.style.setProperty('--e',Math.max(a,b)+'%');o.textContent=fmt(v);rs.classList.toggle('on',Math.abs(v-def)>1e-6)};
   i.value=get();paint();
-  i.addEventListener('pointerdown',()=>{if(!nohist)pending=snap()});
-  i.oninput=()=>{if(pending){hist.push(pending);if(hist.length>40)hist.shift();redoS.length=0;updHist();pending=null}
+  i.addEventListener('pointerdown',()=>{if(!nohist)pending=snap(label)});
+  i.oninput=()=>{if(pending){keepHist(pending);pending=null}
     set(+i.value);paint();after&&after();redraw(glr)};
-  const reset=()=>{if(!nohist)pushHist();i.value=def;set(def);paint();after&&after();redraw(glr)};
+  const reset=()=>{if(!nohist)pushHist(label);i.value=def;set(def);paint();after&&after();redraw(glr)};
 rs.onclick=reset;
 let lt=0,lx=0,dbl=false;
 i.addEventListener('pointerdown',e=>{
@@ -795,10 +795,10 @@ i.addEventListener('pointerup',()=>{if(dbl){dbl=false;setTimeout(reset,0)}});
 i.addEventListener('dblclick',()=>reset());
   return w;
 }
-function adjBlock(p,getO,defs,ck){
+function adjBlock(p,getO,defs,ck,extra){
   const key=cur[ck],row=chips(defs,key,k=>{cur[ck]=k;renderPanel()},k=>getO()[k]!==0);
   p.append(row,slider({label:defs.find(d=>d[0]===key)[1],min:-1,max:1,get:()=>getO()[key],set:v=>getO()[key]=v,
-    after:()=>row.querySelector(`[data-k="${key}"]`).classList.toggle('mod',getO()[key]!==0)}));
+    after:()=>{row.querySelector(`[data-k="${key}"]`).classList.toggle('mod',getO()[key]!==0);extra&&extra()}}));
 }
 
 /* ================= panels ================= */
@@ -842,9 +842,12 @@ function mixer(p){
 }
 function gradePanel(p){
   const R=S.gr[grRange],dh={sh:215,mi:40,hi:40}[grRange];
+  p.classList.add('tight');
+  const sat=slider({label:'Saturation',min:0,max:1,get:()=>R.s,set:v=>R.s=v,def:0,center:0});
   p.append(seg([['sh','Shadows'],['mi','Midtones'],['hi','Highlights']],grRange,k=>{grRange=k;renderPanel()}),
-    slider({label:'Hue',min:0,max:360,step:1,get:()=>R.h,set:v=>R.h=v,def:dh,fmt:v=>Math.round(v)+'°',center:0,cls:'hue'}),
-    slider({label:'Saturation',min:0,max:1,get:()=>R.s,set:v=>R.s=v,def:0,center:0}),
+    slider({label:'Hue',min:0,max:360,step:1,get:()=>R.h,set:v=>R.h=v,def:dh,fmt:v=>Math.round(v)+'°',center:0,cls:'hue',
+      after:()=>{if(R.s===0){R.s=.4;const i=sat.querySelector('input');i.value=.4;i.dispatchEvent(new Event('input'))}}}),
+    sat,
     slider({label:'Luminance',min:-1,max:1,get:()=>R.l,set:v=>R.l=v}));
 }
 function bwPanel(p){
@@ -889,22 +892,23 @@ function curveUI(c){
     for(const [x,y] of S.crv[crvCh]){g.fillStyle='#fff';g.beginPath();g.arc(X(x),Y(y),6*dpr,0,7);g.fill();g.strokeStyle=col;g.lineWidth=2*dpr;g.stroke()}
   };
   draw();
-  let dg=null,last=0,lastIdx=-1;
+   let dg=null,last=0,lastIdx=-1,pend=null;
   const pos=e=>{const r=c.getBoundingClientRect();return[clamp((e.clientX-r.left)/r.width),clamp(1-(e.clientY-r.top)/r.height)]};
+  const keep=()=>{if(pend){keepHist(pend);pend=null}};
   c.onpointerdown=e=>{
     const [x,y]=pos(e),pts=S.crv[crvCh],r=c.getBoundingClientRect(),now=Date.now();
     let idx=-1,best=22;pts.forEach((q,i)=>{const d=Math.hypot((q[0]-x)*r.width,(q[1]-y)*r.height);if(d<best){best=d;idx=i}});
-    pushHist();
-    if(idx>0&&idx<pts.length-1&&idx===lastIdx&&now-last<320){pts.splice(idx,1);crvDirty=true;lastIdx=-1;draw();redraw(true);return}
-    if(idx<0){pts.push([x,y]);pts.sort((a,b)=>a[0]-b[0]);idx=pts.findIndex(q=>q[0]===x&&q[1]===y);crvDirty=true;redraw(true)}
+    pend=snap('Curve');
+    if(idx>0&&idx<pts.length-1&&idx===lastIdx&&now-last<320){keep();pts.splice(idx,1);crvDirty=true;lastIdx=-1;draw();redraw(true);return}
+    if(idx<0){keep();pts.push([x,y]);pts.sort((a,b)=>a[0]-b[0]);idx=pts.findIndex(q=>q[0]===x&&q[1]===y);crvDirty=true;redraw(true)}
     dg=idx;lastIdx=idx;last=now;c.setPointerCapture(e.pointerId);draw();
   };
   c.onpointermove=e=>{
-    if(dg==null)return;const [x,y]=pos(e),pts=S.crv[crvCh],n=pts.length;
+    if(dg==null)return;keep();const [x,y]=pos(e),pts=S.crv[crvCh],n=pts.length;
     const lo=dg===0?0:pts[dg-1][0]+.02,hi=dg===n-1?1:pts[dg+1][0]-.02;
     pts[dg]=[dg===0?0:dg===n-1?1:clamp(x,lo,hi),y];crvDirty=true;draw();redraw(true);
   };
-  c.onpointerup=c.onpointercancel=()=>{dg=null};
+  c.onpointerup=c.onpointercancel=()=>{dg=null;pend=null};
 }
 function panelFx(){
   const p=el('div','col'),F=S.fx;
@@ -926,8 +930,39 @@ function panelMasks(){
   if(pickMode){
     p.append(el('p','hint','Tap the object on the photo. Tap more spots to refine.'),
       seg([['1','Add'],['0','Subtract']],String(pickLabel),k=>{pickLabel=+k;renderPanel()}));
-    const d=el('button','btn pri','Done');d.onclick=()=>{pickMode=false;pickPts=[];pickMask=-1;renderPanel()};p.append(d);return p;
+    const d=el('button','btn pri','Done');d.onclick=()=>{mEdit=pickMask!==-1;pickMode=false;pickPts=[];pickMask=-1;renderPanel();redraw(true)};p.append(d);return p;
   }
+  const row=el('div','hrow');
+  for(const m of S.masks){const b=el('button','chip',m.name);b.setAttribute('aria-pressed',mEdit&&m.id===selM);if(nz(m.adj))b.classList.add('mod');
+    b.onclick=()=>{selM=m.id;adding=false;mEdit=true;renderPanel();redraw(true)};row.append(b)}
+  const nw=el('button','chip','＋ New mask');nw.onclick=()=>{adding=true;mEdit=false;renderPanel();redraw(true)};row.append(nw);p.append(row);
+  const m=selMask();
+  if(adding||!m){
+    const grid=el('div','pal');
+    for(const k of Object.keys(MK_NAMES)){const b=el('button','btn',k==='object'?'Tap object':MK_NAMES[k]);b.onclick=()=>addMask(k);grid.append(b)}
+    p.append(grid);
+    if(!m)p.append(el('p','hint','AI masks download a model the first time (about 10–40 MB), then work offline.'));
+    return p;
+  }
+  if(!mEdit){p.append(el('p','hint','Your masks are applied in the preview. Tap a mask to edit it, or add a new one.'));return p}
+  const r=el('div','row');
+  const inv=el('button','btn','Invert');inv.setAttribute('aria-pressed',m.inv);inv.onclick=()=>{pushHist('Invert');m.inv=!m.inv;renderPanel();redraw(true)};
+  const ov=el('button','btn','Overlay');ov.setAttribute('aria-pressed',overlayOn);ov.onclick=()=>{overlayOn=!overlayOn;renderPanel();redraw(true)};
+  const del=el('button','btn','Delete');del.onclick=()=>{pushHist('Delete mask');S.masks=S.masks.filter(x=>x!==m);ensureSel();mEdit=false;renderPanel();redraw(true)};
+  const ok=el('button','btn pri','✓ OK');ok.onclick=()=>{mEdit=false;renderPanel();redraw(true);toast('Mask applied')};
+  r.append(inv,ov,del,ok);p.append(r);
+  const hideOv=()=>{if(overlayOn){overlayOn=false;ov.setAttribute('aria-pressed',false)}};
+  adjBlock(p,()=>m.adj,[...LIGHT,...COLOR],'mask',hideOv);
+  p.append(slider({label:'Blur',min:0,max:1,get:()=>m.adj.blur||0,set:v=>m.adj.blur=v,def:0,center:0,after:hideOv}));
+  if(m.type==='tilt')p.append(el('p','hint','Drag the dots to move or rotate the focus line. The area outside the dashed band is blurred.'),
+    slider({label:'Band width',min:.02,max:.4,step:.005,get:()=>m.g.w,set:v=>m.g.w=v,def:.1,center:.02,fmt:v=>Math.round(v*100)}));
+  else if(m.type==='linear'||m.type==='radial')p.append(el('p','hint','Drag the blue dots to move or resize. Tap OK when finished.'));
+  else p.append(seg([['off','Brush off'],['add','Add'],['erase','Erase']],brush,k=>{brush=k;renderPanel()}),
+    slider({label:'Brush size',min:16,max:160,step:1,get:()=>brushSize,set:v=>brushSize=v,def:56,fmt:v=>Math.round(v),center:16,glr:false,nohist:true}));
+  if(m.type==='radial')p.append(slider({label:'Feather',min:.02,max:1,step:.01,get:()=>m.f,set:v=>m.f=v,def:.5,center:.02,fmt:v=>Math.round(v*100)}));
+  else if(!isLine(m))p.append(slider({label:'Edge softness',min:0,max:20,step:1,get:()=>m.f,set:v=>m.f=v,def:2,fmt:v=>v,center:0}));
+  return p;
+}
   const row=el('div','hrow');
   for(const m of S.masks){const b=el('button','chip',m.name);b.setAttribute('aria-pressed',m.id===selM);if(nz(m.adj))b.classList.add('mod');
     b.onclick=()=>{selM=m.id;adding=false;renderPanel();redraw(true)};row.append(b)}
@@ -971,7 +1006,7 @@ async function addMask(type){
   }catch(e){console.error(e);toast('Could not run the AI model. Check your connection and retry.',4500);return}
   finally{busy=false}
   const n=S.masks.filter(x=>x.type===type).length+1;m.name=MK_NAMES[type]+(n>1?' '+n:'');
-  pushHist();S.masks.push(m);selM=m.id;adding=false;overlayOn=true;renderPanel();redraw(true);toast('Mask added. Adjust it below.');
+  pushHist('Add mask');S.masks.push(m);selM=m.id;adding=false;mEdit=true;overlayOn=true;renderPanel();redraw(true);toast('Mask added. Adjust it, then tap OK.');
 }
 /* ---- crop / frame / add panels ---- */
 function panelCrop(){
@@ -1045,7 +1080,7 @@ function renderPanel(reset){
 const TABS=[['looks','Looks'],['light','Light'],['color','Color'],['crv','Curves'],['fx','Effects'],['masks','Masks'],['crop','Crop'],['frame','Frames'],['add','Add']];
 for(const [id,l] of TABS){const b=el('button','',ICON[id]+`<span>${l}</span>`);b.id='tab_'+id;b.setAttribute('role','tab');b.setAttribute('aria-selected',id===tab);b.onclick=()=>{buzz();setTab(id)};$('#tabs').append(b)}
 function setTab(id){
-  const ch=id!==tab;tab=id;if(ch){pickMode=false;pickPts=[];adding=false;selItem=-1}
+  const ch=id!==tab;tab=id;if(ch){pickMode=false;pickPts=[];adding=false;selItem=-1;mEdit=false}
   for(const [i] of TABS)$('#tab_'+i).setAttribute('aria-selected',i===id);
   $('#tab_'+id).scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'});
   ring.style.display='none';renderPanel(ch);redraw(true);
@@ -1229,7 +1264,13 @@ async function doExport(share){
 /* ================= wiring ================= */
 $('#bOpen').innerHTML=ICON.open;$('#bUndo').innerHTML=ICON.undo;$('#bRedo').innerHTML=ICON.redo;$('#bCmp').innerHTML=ICON.eye;
 $('#hlogo').innerHTML=LOGO(28,'h');$('#wlogo').innerHTML=LOGO(104,'w',24);
-$('#bUndo').onclick=undo;$('#bRedo').onclick=redo;$('#bExport').onclick=openExport;
+$('#bUndo').onclick=undo;$('#bRedo').onclick=redo;$('#bReset').innerHTML=ICON.reset;
+$('#bReset').onclick=()=>{
+  if(!loaded)return;
+  if(!confirm('Reset all edits on this photo? You can still undo this.'))return;
+  pushHist('Reset all');S=fresh();selM=-1;mEdit=false;selItem=-1;brush='off';crvDirty=true;lutUploaded=null;
+  renderPanel(true);redraw(true);toast('All edits reset. Tap Undo to bring them back.');
+};$('#bExport').onclick=openExport;
 $('#modal').onclick=e=>{if(e.target.id==='modal')$('#modal').classList.remove('on')};
 const pick=()=>$('#file').click();
 $('#bStart').onclick=pick;
