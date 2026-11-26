@@ -45,6 +45,7 @@ let S=fresh();
 let SW=0,SH=0,MW=0,MH=0,srcCanvas=null,loaded=false,mid=0;
 let tab='looks',colorMode='basic',grRange='sh',band=0,bwBand=0,overlayOn=true,brush='off',brushSize=56,comparing=false,fxGroup='detail';
 let selM=-1,adding=false,pickMode=false,pickPts=[],pickMask=-1,pickLabel=1,busy=false;
+let mEdit=false;const mRaw=()=>tab==='masks'&&(mEdit||pickMode);
 let addMode='text',selItem=-1,crvCh='rgb',drawCol='#ffffff',drawW=1.2;
 const cur={light:'exposure',color:'temp',fx:'clarity',frame:'size',brand:'size',mix:'0',mask:'exposure'};
 let customLut=null,logoImg=null,thumbURL={},crvDirty=true;
@@ -53,13 +54,14 @@ const selMask=()=>S.masks.find(m=>m.id===selM)||null;
 const isLine=m=>m.type==='linear'||m.type==='tilt';
 const selIt=()=>{const i=S.items[selItem];return i&&i.type!=='draw'?i:null};
 const ensureSel=()=>{if(!S.masks.some(m=>m.id===selM))selM=S.masks.length?S.masks[S.masks.length-1].id:-1;if(selItem>=S.items.length)selItem=-1};
-const snap=()=>({s:JSON.stringify(S,(k,v)=>k==='d'?undefined:v),bm:S.masks.map(m=>m.d)});
+const snap=l=>({s:JSON.stringify(S,(k,v)=>k==='d'?undefined:v),bm:S.masks.map(m=>m.d),l});
 function updHist(){$('#bUndo').disabled=!hist.length;$('#bRedo').disabled=!redoS.length}
-function pushHist(){hist.push(snap());if(hist.length>40)hist.shift();redoS.length=0;updHist()}
-const commit=d=>{hist.push(d.pend);if(hist.length>40)hist.shift();redoS.length=0;updHist();d.moved=true};
+function keepHist(d){hist.push(d);if(hist.length>80)hist.shift();redoS.length=0;updHist()}
+const pushHist=l=>keepHist(snap(l));
+const commit=d=>{keepHist(d.pend);d.moved=true};
 function restore(h){S=JSON.parse(h.s);S.masks.forEach((m,i)=>{m.d=h.bm[i]||null});crvDirty=true;lutUploaded=null;ensureSel();renderPanel();updHist();redraw(true)}
-function undo(){if(!hist.length)return;redoS.push(snap());restore(hist.pop())}
-function redo(){if(!redoS.length)return;hist.push(snap());restore(redoS.pop())}
+function undo(){if(!hist.length)return;const h=hist.pop(),r=snap();r.l=h.l;redoS.push(r);restore(h);toast('Undo: '+(h.l||'edit'),1200)}
+function redo(){if(!redoS.length)return;const h=redoS.pop(),r=snap();r.l=h.l;hist.push(r);restore(h);toast('Redo: '+(h.l||'edit'),1200)}
 let tt;function toast(m,ms=2400,spin=false){const t=$('#toast');t.innerHTML=(spin?'<i class="spin"></i>':'')+m;t.classList.add('on');clearTimeout(tt);if(ms)tt=setTimeout(()=>t.classList.remove('on'),ms)}
 
 /* ================= WebGL (multi-pass) ================= */
@@ -442,7 +444,7 @@ function renderGL(full){
     ps=[{t:0}];
     for(const m of S.masks)if(nz(m.adj))ps.push({t:1,m});
     ps.push({t:2});
-    if(tab==='masks'&&overlayOn&&sm)ps.push({t:3,m:sm});
+    if(mRaw()&&overlayOn&&sm)ps.push({t:3,m:sm});
   }
   let st=imgTex,fi=0;
   ps.forEach((p,i)=>{
@@ -585,7 +587,7 @@ const redraw=(g=false)=>{if(g)glDirty=true;if(!raf)raf=requestAnimationFrame(sho
 function show(){
   raf=0;if(!loaded)return;
   if(glDirty){renderGL(false);glDirty=false}
-  const mode=tab==='crop'?'crop':tab==='masks'?'raw':'final';
+  const mode=tab==='crop'?'crop':mRaw()?'raw':'final';
   let tw,th;
   if(mode==='raw'){tw=SW;th=SH}else if(mode==='crop'){[tw,th]=frameDims()}else{const n=natural();tw=n.tw;th=n.th}
   const aw=stage.clientWidth-24,ah=stage.clientHeight-24;if(aw<=0||ah<=0)return;
@@ -595,7 +597,7 @@ function show(){
   cv.style.width=cw+'px';cv.style.height=ch+'px';
   const ctx=cv.getContext('2d');ctx.setTransform(1,0,0,1,0,0);compose(ctx,bw,bh,mode,true);
   if(mode==='crop')cropOverlay(ctx,bw,bh);
-  if(mode==='raw')maskHandles(ctx,bw,bh);
+  if(mode==='raw'&&!pickMode)maskHandles(ctx,bw,bh);
 }
 new ResizeObserver(()=>redraw()).observe(stage);
 
@@ -721,7 +723,7 @@ cv.addEventListener('pointerdown',e=>{
     const h=cropHit(u,v);if(h){drag={k:'crop',h,u,v,s:{...S.geo.crop},pend:snap(),moved:false};cv.setPointerCapture(e.pointerId)}
   }else if(tab==='masks'){
     if(pickMode){samPoint(u,v);return}
-    const m=selMask();if(!m)return;
+    const m=selMask();if(!m||!mEdit)return;
     if(isLine(m)||m.type==='radial'){
       const h=geoHit(m,u,v);if(h){drag={k:'geo',h,m,u,v,s:{...m.g},pend:snap(),moved:false};cv.setPointerCapture(e.pointerId)}
     }else if(brush!=='off'){
