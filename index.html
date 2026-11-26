@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Maskroom</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="empty">
+<div id="app">
+  <header>
+    <div class="hl edit">
+      <button class="ib" id="bOpen" aria-label="Open another photo"></button>
+      <button class="ib" id="bUndo" aria-label="Undo" disabled></button>
+      <button class="ib" id="bRedo" aria-label="Redo" disabled></button>
+    </div>
+    <div id="hlogo"></div>
+    <div class="hr edit">
+      <button class="ib" id="bCmp" aria-label="Hold to compare with original"></button>
+      <button class="pill" id="bExport">Export</button>
+    </div>
+  </header>
+  <main id="stage">
+    <canvas id="cv"></canvas>
+    <div id="toast"></div>
+    <div id="welcome">
+      <div id="wlogo"></div>
+      <h1>Maskroom</h1>
+      <p>Studio-grade editing in your pocket. Smart masks, curves, film looks, crop and frames.</p>
+      <button class="btn pri big" id="bStart">Choose a photo</button>
+      <button class="btn" id="bInstall" hidden>Install app</button>
+      <small>Private by design. Your photos never leave this device.</small>
+    </div>
+  </main>
+  <section id="sheet">
+    <div id="panel"></div>
+    <nav id="tabs" role="tablist"></nav>
+  </section>
+</div>
+<div id="ring"></div>
+<div id="modal"><div class="card" id="card"></div></div>
+<input type="file" id="file" accept="image/*,.dng,.cr2,.cr3,.nef,.arw,.orf,.rw2,.raf,.pef,.srw" hidden>
+<input type="file" id="fLut" accept=".cube,.txt" hidden>
+<input type="file" id="fLogo" accept="image/*" hidden>
+<script src="app.js"></script>
+</body>
+</html>
