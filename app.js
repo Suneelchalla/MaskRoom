@@ -1523,10 +1523,6 @@ for(const ev of['pointerup','pointerleave','pointercancel'])bc.addEventListener(
   if(ev==='pointerup'&&Date.now()-cmpT<250){cmpLatched=true;toast('Showing the original. Tap the eye again to go back.',0)}
   else setC(false)});
 bc.addEventListener('contextmenu',e=>e.preventDefault());
-let dip=null;
-addEventListener('beforeinstallprompt',e=>{e.preventDefault();dip=e;$('#bInstall').hidden=false});
-$('#bInstall').onclick=async()=>{if(!dip)return;dip.prompt();await dip.userChoice;dip=null;$('#bInstall').hidden=true};
-addEventListener('appinstalled',()=>{$('#bInstall').hidden=true;toast('Maskroom installed')});
 
 /* ================= layout: phone / desktop ================= */
 const MODE_KEY='maskroom-layout';
