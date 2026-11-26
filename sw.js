@@ -1,4 +1,4 @@
-const V = 'maskroom-v9', CDN = 'maskroom-cdn', TF = 'transformers-cache';
+const V = 'maskroom-v10', CDN = 'maskroom-cdn', TF = 'transformers-cache', FONTS = 'maskroom-fonts';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -6,7 +6,7 @@ self.addEventListener('install', e => {
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys()
-    .then(ks => Promise.all(ks.filter(k => k !== V && k !== CDN && k !== TF).map(k => caches.delete(k))))
+    .then(ks => Promise.all(ks.filter(k => k !== V && k !== CDN && k !== TF && k !== FONTS).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', e => {
@@ -20,6 +20,13 @@ self.addEventListener('fetch', e => {
       const res = await fetch(r);
       if (res.ok) c.put(r, res.clone());
       return res;
+    }));
+  } else if (u.hostname === 'fonts.googleapis.com' || u.hostname === 'fonts.gstatic.com') {
+    /* web fonts for the text tool: cache so they keep working offline */
+    e.respondWith(caches.open(FONTS).then(async c => {
+      const hit = await c.match(r);
+      const net = fetch(r).then(res => { if (res.ok || res.type === 'opaque') c.put(r, res.clone()); return res; }).catch(() => hit);
+      return hit || net;
     }));
   } else if (u.origin === location.origin) {
     e.respondWith(caches.open(V).then(async c => {
