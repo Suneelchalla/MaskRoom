@@ -963,34 +963,6 @@ function panelMasks(){
   else if(!isLine(m))p.append(slider({label:'Edge softness',min:0,max:20,step:1,get:()=>m.f,set:v=>m.f=v,def:2,fmt:v=>v,center:0}));
   return p;
 }
-  const row=el('div','hrow');
-  for(const m of S.masks){const b=el('button','chip',m.name);b.setAttribute('aria-pressed',m.id===selM);if(nz(m.adj))b.classList.add('mod');
-    b.onclick=()=>{selM=m.id;adding=false;renderPanel();redraw(true)};row.append(b)}
-  const nw=el('button','chip','＋ New mask');nw.onclick=()=>{adding=true;renderPanel()};row.append(nw);p.append(row);
-  const m=selMask();
-  if(adding||!m){
-    const grid=el('div','pal');
-    for(const k of Object.keys(MK_NAMES)){const b=el('button','btn',k==='object'?'Tap object':MK_NAMES[k]);b.onclick=()=>addMask(k);grid.append(b)}
-    p.append(grid);
-    if(!m)p.append(el('p','hint','AI masks download a model the first time (about 10–40 MB), then work offline.'));
-    return p;
-  }
-  const r=el('div','row');
-  const inv=el('button','btn','Invert');inv.setAttribute('aria-pressed',m.inv);inv.onclick=()=>{pushHist();m.inv=!m.inv;renderPanel();redraw(true)};
-  const ov=el('button','btn','Overlay');ov.setAttribute('aria-pressed',overlayOn);ov.onclick=()=>{overlayOn=!overlayOn;renderPanel();redraw(true)};
-  const del=el('button','btn','Delete');del.onclick=()=>{pushHist();S.masks=S.masks.filter(x=>x!==m);ensureSel();renderPanel();redraw(true)};
-  r.append(inv,ov,del);p.append(r);
-  adjBlock(p,()=>m.adj,[...LIGHT,...COLOR],'mask');
-  p.append(slider({label:'Blur',min:0,max:1,get:()=>m.adj.blur||0,set:v=>m.adj.blur=v,def:0,center:0}));
-  if(m.type==='tilt')p.append(el('p','hint','Drag the dots to move or rotate the focus line. The area outside the dashed band is blurred.'),
-    slider({label:'Band width',min:.02,max:.4,step:.005,get:()=>m.g.w,set:v=>m.g.w=v,def:.1,center:.02,fmt:v=>Math.round(v*100)}));
-  else if(m.type==='linear'||m.type==='radial')p.append(el('p','hint','Drag the blue dots on the photo to move or resize. Pink shows the edited area.'));
-  else p.append(seg([['off','Brush off'],['add','Add'],['erase','Erase']],brush,k=>{brush=k;renderPanel()}),
-    slider({label:'Brush size',min:16,max:160,step:1,get:()=>brushSize,set:v=>brushSize=v,def:56,fmt:v=>Math.round(v),center:16,glr:false,nohist:true}));
-  if(m.type==='radial')p.append(slider({label:'Feather',min:.02,max:1,step:.01,get:()=>m.f,set:v=>m.f=v,def:.5,center:.02,fmt:v=>Math.round(v*100)}));
-  else if(!isLine(m))p.append(slider({label:'Edge softness',min:0,max:20,step:1,get:()=>m.f,set:v=>m.f=v,def:2,fmt:v=>v,center:0}));
-  return p;
-}
 async function addMask(type){
   if(busy||!loaded)return;
   if(type==='object'){adding=false;pickMode=true;pickPts=[];pickMask=-1;renderPanel();toast('Tap the object you want to select');return}
