@@ -15,7 +15,8 @@ body.empty .edit{visibility:hidden}
 .ib svg{width:23px;height:23px}
 .pill{height:34px;padding:0 17px;border-radius:17px;border:0;background:var(--acc);color:#fff;font-weight:600;font-size:14px}
 #stage{flex:1;min-height:0;position:relative;display:grid;place-items:center;background:radial-gradient(120% 80% at 50% 0%,#1a1b20,#000 72%);overflow:hidden}
-#cv{display:none;box-shadow:0 12px 44px rgba(0,0,0,.65);touch-action:none}
+#stage{touch-action:none}
+#cv{display:none;position:absolute;left:50%;top:50%;box-shadow:0 12px 44px rgba(0,0,0,.65);touch-action:none}
 body:not(.empty) #cv{display:block}
 #toast{position:absolute;top:10px;left:50%;transform:translate(-50%,-8px);opacity:0;pointer-events:none;transition:.25s;background:rgba(40,40,44,.85);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:.5px solid var(--line);padding:8px 14px;border-radius:18px;font-size:13px;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis;z-index:5;display:flex;align-items:center;gap:8px}
 #toast.on{opacity:1;transform:translate(-50%,0)}
@@ -114,3 +115,13 @@ body.pc input[type=range]{cursor:pointer}
 body.pc.empty #welcome{padding:48px}
 body.mob:not(.empty) #hlogo{display:none}
 body.pc.empty #sheet{display:none}
+
+/* zoom controls */
+#zoomc{position:absolute;right:10px;bottom:10px;z-index:4;display:flex;align-items:center;background:rgba(40,40,44,.82);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:.5px solid var(--line);border-radius:20px;padding:2px;touch-action:manipulation}
+body.empty #zoomc{display:none}
+#zoomc button{height:34px;min-width:34px;border:0;background:none;border-radius:17px;font-size:19px;line-height:1;display:grid;place-items:center;padding:0 6px}
+#zoomc #zPct{font-size:12px;font-weight:600;min-width:50px;font-variant-numeric:tabular-nums}
+#zoomc button:active{background:rgba(255,255,255,.14)}
+#zoomc .hand svg{width:19px;height:19px}
+#zoomc .hand[aria-pressed=true]{background:rgba(10,132,255,.35);color:#6cb4ff}
+body.pc #zoomc button:hover{background:rgba(255,255,255,.12)}
