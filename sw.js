@@ -1,4 +1,4 @@
-const V = 'maskroom-v6', CDN = 'maskroom-cdn';
+const V = 'maskroom-v7', CDN = 'maskroom-cdn', TF = 'transformers-cache';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -6,7 +6,7 @@ self.addEventListener('install', e => {
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys()
-    .then(ks => Promise.all(ks.filter(k => k !== V && k !== CDN).map(k => caches.delete(k))))
+    .then(ks => Promise.all(ks.filter(k => k !== V && k !== CDN && k !== TF).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', e => {
