@@ -1,7 +1,7 @@
 {
   "name": "Maskroom",
   "short_name": "Maskroom",
-  "description": "Pro photo editor with smart masks, curves, LUT looks, crop and frames.",
+  "description": "Pro photo editor with smart masks, curves, LUT looks, glow and sunlight effects, heal, crop and frames.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
