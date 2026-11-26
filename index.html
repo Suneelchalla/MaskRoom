@@ -30,13 +30,19 @@
   <main id="stage">
     <canvas id="cv"></canvas>
     <div id="toast"></div>
+    <div id="zoomc" class="edit">
+      <button id="zOut" aria-label="Zoom out">&minus;</button>
+      <button id="zPct" aria-label="Toggle fit / 100%">100%</button>
+      <button id="zIn" aria-label="Zoom in">+</button>
+      <button id="zHand" class="hand" aria-label="Hand tool: drag to move the photo" aria-pressed="false"></button>
+    </div>
     <div id="welcome">
       <div id="wlogo"></div>
       <h1>Maskroom</h1>
-      <p>Studio-grade editing in your pocket. Smart masks, curves, film looks, crop and frames.</p>
+      <p>Studio-grade editing in your pocket. Smart masks, curves, film looks, glow, sunlight, heal, crop and frames.</p>
       <div class="seg" id="wmode" role="group" aria-label="Layout"></div>
       <button class="btn pri big" id="bStart">Choose a photo</button>
-      <small>Private by design. Your photos never leave this device.</small>
+      <small>Private by design: photos are processed on this device and never uploaded. AI masks download their model once, then work offline.</small>
     </div>
   </main>
   <section id="sheet">
