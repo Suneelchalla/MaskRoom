@@ -1,4 +1,4 @@
-const V = 'maskroom-v5', CDN = 'maskroom-cdn';
+const V = 'maskroom-v6', CDN = 'maskroom-cdn';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
