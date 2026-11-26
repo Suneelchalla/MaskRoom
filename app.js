@@ -51,7 +51,8 @@ let S=fresh();
 let SW=0,SH=0,MW=0,MH=0,srcCanvas=null,loaded=false,mid=0;
 let tab='looks',colorMode='basic',grRange='sh',band=0,bwBand=0,overlayOn=true,brush='off',brushSize=56,comparing=false,fxGroup='detail';
 let selM=-1,adding=false,pickMode=false,pickPts=[],pickMask=-1,pickLabel=1,busy=false;
-let mEdit=false;const mRaw=()=>(tab==='masks'&&(mEdit||pickMode))||tab==='heal';
+let mEdit=false;const sunMode=()=>tab==='fx'&&fxGroup==='sun';
+const mRaw=()=>(tab==='masks'&&(mEdit||pickMode))||tab==='heal'||sunMode();
 let addMode='text',selItem=-1,crvCh='rgb',drawCol='#ffffff',drawW=1.2;
 const cur={light:'exposure',color:'temp',fx:'clarity',frame:'size',brand:'size',mix:'0',mask:'exposure'};
 let customLut=null,logoImg=null,thumbURL={},crvDirty=true,srcInfo={w:0,h:0};
@@ -771,6 +772,7 @@ function show(){
   const ctx=cv.getContext('2d');ctx.setTransform(1,0,0,1,0,0);compose(ctx,bw,bh,mode,true);
   if(mode==='crop')cropOverlay(ctx,bw,bh);
   if(mode==='raw'&&!pickMode)maskHandles(ctx,bw,bh);
+  if(mode==='raw'&&sunMode())sunHandles(ctx,bw,bh);
   if(mode==='raw'&&tab==='heal')healOverlay(ctx,bw,bh);
 }
 new ResizeObserver(()=>redraw()).observe(stage);
@@ -865,10 +867,29 @@ function geoUpdate(m,h,s,du,dv){
 }
 
 
+/* ================= sunlight: place and size directly on the photo ================= */
+const sunS=()=>.12+S.fx.sunSize*.9;                       /* same size mapping the shader uses */
+const setSunS=s=>{S.fx.sunSize=clamp((clamp(s,.12,1.02)-.12)/.9)};
+function placeSun(u,v){const F=S.fx;F.sunX=clamp(u,-.25,1.25);F.sunY=clamp(v,-.25,1.25);if(F.sun===0)F.sun=.7;redraw(true)}
+let sunPanelT=0;
+const refreshSunPanel=()=>{if(sunPanelT)return;sunPanelT=requestAnimationFrame(()=>{sunPanelT=0;if(sunMode())renderPanel()})};
+let sunHistT=0;
+function sunResizeBy(k){                                   /* wheel and pinch both end up here */
+  const n=Date.now();if(n-sunHistT>700)pushHist('Sun size');sunHistT=n;
+  const F=S.fx;if(F.sun===0)F.sun=.7;setSunS(sunS()*k);redraw(true);refreshSunPanel();
+}
+function sunHandles(ctx,w,h){
+  const F=S.fx,d=w/cv.clientWidth,X=F.sunX*w,Y=F.sunY*h,R=sunS()*h*.7;
+  ctx.save();ctx.lineWidth=1.5*d;ctx.strokeStyle='rgba(255,255,255,.95)';ctx.shadowColor='rgba(0,0,0,.6)';ctx.shadowBlur=3*d;
+  ctx.setLineDash([7*d,5*d]);ctx.beginPath();ctx.arc(X,Y,Math.max(R,12*d),0,7);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ffd24a';ctx.beginPath();ctx.arc(X,Y,10*d,0,7);ctx.fill();ctx.stroke();
+  ctx.restore();
+}
+
 /* ================= zoom / pan ================= */
 const ZMIN=.5,ZMAX=16;
 const gp=new Map();let gest=null,spaceDown=false,lastTap={t:0,x:0,y:0};
-const idleTool=()=>!(tab==='crop'||tab==='heal'||tab==='add'||(tab==='masks'&&(mEdit||pickMode)));
+const idleTool=()=>!(tab==='crop'||tab==='heal'||tab==='add'||sunMode()||(tab==='masks'&&(mEdit||pickMode)));
 function setZoom(z,cx,cy){
   z=clamp(z,ZMIN,ZMAX);const r=stage.getBoundingClientRect();
   if(cx==null){cx=r.left+r.width/2;cy=r.top+r.height/2}
@@ -882,6 +903,7 @@ function zoom11(cx,cy){setZoom(1/(view.fit*view.dpr),cx,cy)}   /* one photo pixe
 function abortTool(){
   if(hs){if(hs.mode==='clone')abortClone(hs);hs=null}
   if(drawing){const i=S.items.indexOf(drawing);if(i>=0){S.items.splice(i,1);hist.pop();updHist()}drawing=null}
+  if(drag&&drag.k==='sun'){Object.assign(S.fx,drag.o);if(drag.moved){hist.pop();updHist()}renderPanel()}   /* a second finger means pinch: undo the half-made placement */
   drag=null;stroke=null;ring.style.display='none';redraw(true);
 }
 function pinchInit(){
@@ -892,7 +914,9 @@ function pinchInit(){
 stage.addEventListener('pointerdown',e=>{
   if(!loaded||e.target.closest('#zoomc'))return;
   gp.set(e.pointerId,[e.clientX,e.clientY]);
-  if(gp.size===2){abortTool();pinchInit();e.stopPropagation();e.preventDefault();return}
+  if(gp.size===2){abortTool();
+    if(sunMode()){const [a,b]=[...gp.values()];gest={k:'sunsize',d0:Math.hypot(a[0]-b[0],a[1]-b[1])||1,s0:sunS(),pushed:false}}else pinchInit();
+    e.stopPropagation();e.preventDefault();return}
   if(gp.size>2){e.stopPropagation();return}
   const mouse=e.pointerType==='mouse';
   const pan=mouse?(e.button===1||e.button===2||(e.button===0&&(view.hand||spaceDown))):(view.hand||(idleTool()&&view.z>1.001));
@@ -908,6 +932,10 @@ stage.addEventListener('pointermove',e=>{
     const z=clamp(gest.z0*d/gest.d0,ZMIN,ZMAX),k=z/gest.z0;
     view.z=z;view.x=mx-(gest.mx-gest.vx)*k;view.y=my-(gest.my-gest.vy)*k;
     redraw();e.stopPropagation();
+  }else if(gest.k==='sunsize'&&gp.size>=2){
+    const [a,b]=[...gp.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1])||1;
+    if(!gest.pushed){pushHist('Sun size');gest.pushed=true}
+    const F=S.fx;if(F.sun===0)F.sun=.7;setSunS(gest.s0*d/gest.d0);redraw(true);refreshSunPanel();e.stopPropagation();
   }else if(gest.k==='pan'){
     const dx=e.clientX-gest.px,dy=e.clientY-gest.py;if(Math.abs(dx)+Math.abs(dy)>2)gest.moved=true;
     view.x+=dx;view.y+=dy;gest.px=e.clientX;gest.py=e.clientY;redraw();e.stopPropagation();
@@ -915,7 +943,8 @@ stage.addEventListener('pointermove',e=>{
 },true);
 const gEnd=e=>{
   const had=gp.delete(e.pointerId);if(!had)return;
-  if(gest&&gest.k==='pinch'){if(gp.size<2){gest=null;if(gp.size===1){const [id]=[...gp.keys()];gest={k:'pan',px:gp.get(id)[0],py:gp.get(id)[1],moved:true}}}}
+  if(gest&&gest.k==='sunsize'){if(gp.size<2)gest=null}
+  else if(gest&&gest.k==='pinch'){if(gp.size<2){gest=null;if(gp.size===1){const [id]=[...gp.keys()];gest={k:'pan',px:gp.get(id)[0],py:gp.get(id)[1],moved:true}}}}
   else if(gest&&gest.k==='pan'&&gp.size===0)gest=null;
   else if(gest&&gest.k==='tap'&&e.type==='pointerup'){
     /* double tap toggles between fit and 2.5x on tools that do not use one-finger drags */
@@ -929,7 +958,9 @@ const gEnd=e=>{
 stage.addEventListener('pointerup',gEnd,true);stage.addEventListener('pointercancel',gEnd,true);
 stage.addEventListener('wheel',e=>{
   if(!loaded)return;e.preventDefault();
-  const dy=e.deltaMode===1?e.deltaY*16:e.deltaY,k=Math.exp(-dy*(e.ctrlKey?.012:.0016));
+  const dy=e.deltaMode===1?e.deltaY*16:e.deltaY;
+  if(sunMode()&&!e.ctrlKey&&!e.metaKey){sunResizeBy(Math.exp(-dy*.0016));return}
+  const k=Math.exp(-dy*(e.ctrlKey?.012:.0016));
   setZoom(view.z*k,e.clientX,e.clientY);
 },{passive:false});
 stage.addEventListener('dblclick',e=>{if(!loaded||!idleTool()||e.target.closest('#zoomc'))return;view.z>1.05?zoomFit():setZoom(2.5,e.clientX,e.clientY)});
@@ -978,7 +1009,11 @@ function strokeTo(e){
 function moveRing(e,sz=brushSize){ring.style.width=ring.style.height=sz+'px';ring.style.left=e.clientX+'px';ring.style.top=e.clientY+'px';ring.style.display='block'}
 cv.addEventListener('pointerdown',e=>{
   if(!loaded)return;const [u,v]=uv(e);
-  if(tab==='crop'){
+  if(sunMode()){
+    if(e.pointerType==='mouse'&&e.button!==0)return;
+    const F=S.fx;drag={k:'sun',o:{sun:F.sun,sunX:F.sunX,sunY:F.sunY},pend:snap('Sun'),moved:false};cv.setPointerCapture(e.pointerId);
+    commit(drag);placeSun(u,v);renderPanel();
+  }else if(tab==='crop'){
     const h=cropHit(u,v);if(h){drag={k:'crop',h,u,v,s:{...S.geo.crop},pend:snap(),moved:false};cv.setPointerCapture(e.pointerId)}
   }else if(tab==='masks'){
     if(pickMode){samPoint(u,v);return}
@@ -1018,6 +1053,8 @@ cv.addEventListener('pointermove',e=>{
     }else if(drag.k==='geo'){
       const du=u-drag.u,dv=v-drag.v;if(!drag.moved&&Math.abs(du)+Math.abs(dv)>.002)commit(drag);
       drag.m.g=geoUpdate(drag.m,drag.h,drag.s,du,dv);redraw(true);
+    }else if(drag.k==='sun'){
+      placeSun(u,v);
     }else if(drag.k==='item'){
       const [x,y]=toPhoto(u,v);if(!drag.moved&&Math.hypot(x-drag.x,y-drag.y)>.004)commit(drag);
       drag.it.x=drag.ox+(x-drag.x);drag.it.y=drag.oy+(y-drag.y);redraw();
@@ -1082,7 +1119,7 @@ const COLOR=[['temp','Temp'],['tint','Tint'],['vibrance','Vibrance'],['saturatio
 const FXG={
  detail:['Detail',[['clarity','Clarity',-1,1,0],['texture','Texture',-1,1,0],['dehaze','Dehaze',-1,1,0]]],
  glow:['Glow',[['glow','Amount',0,1,0],['glowRad','Radius',0,1,.5],['glowThr','Threshold',0,1,.4],['glowWarm','Warmth',-1,1,0]]],
- sun:['Sunlight',[['sun','Amount',0,1,0],['sunSize','Size',0,1,.5],['sunX','Position X',0,1,.85],['sunY','Position Y',0,1,.12],['sunRays','Rays',0,1,.4],['sunHue','Color',0,360,40,'hue']]],
+ sun:['Sunlight',[['sun','Amount',0,1,0],['sunSize','Size',0,1,.5],['sunRays','Rays',0,1,.4],['sunHue','Color',0,360,40,'hue']]],
  sharpen:['Sharpen',[['sharpen','Amount',0,1,0],['shrRad','Radius',.5,3,1],['shrDet','Detail',0,1,.5],['shrMask','Masking',0,1,0]]],
  denoise:['Denoise',[['dnL','Luminance',0,1,0],['dnC','Color',0,1,0]]],
  vignette:['Vignette',[['vignette','Amount',-1,1,0],['vigMid','Midpoint',0,1,.6],['vigFeather','Feather',0,1,.6],['vigRound','Roundness',0,1,.5]]],
@@ -1192,13 +1229,18 @@ function curveUI(c){
 }
 function panelFx(){
   const p=el('div','col'),F=S.fx;
-  p.append(chips(Object.entries(FXG).map(([k,g])=>[k,g[0]]),fxGroup,k=>{fxGroup=k;renderPanel();panel.scrollTop=0},
+  p.append(chips(Object.entries(FXG).map(([k,g])=>[k,g[0]]),fxGroup,k=>{fxGroup=k;renderPanel();panel.scrollTop=0;redraw(true)},
     k=>FXG[k][1].some(q=>F[q[0]]!==q[4])||(k==='finish'&&F.defr)));
   /* one-tap starting points for the light effects */
   const quick=(list)=>{const r=el('div','hrow');
     for(const [name,vals] of list){const b=el('button','chip',name);b.onclick=()=>{buzz();pushHist(name);Object.assign(F,vals);renderPanel();redraw(true)};r.append(b)}
     p.append(r)};
   if(fxGroup==='glow')quick([['Soft dream',{glow:.55,glowRad:.8,glowThr:.15,glowWarm:.1}],['Bloom',{glow:.6,glowRad:.45,glowThr:.55,glowWarm:0}],['Golden glow',{glow:.65,glowRad:.6,glowThr:.35,glowWarm:.8}],['Halation',{glow:.5,glowRad:.3,glowThr:.7,glowWarm:1}],['Cool glow',{glow:.55,glowRad:.6,glowThr:.35,glowWarm:-.8}]]);
+  if(fxGroup==='sun'){
+    p.append(el('p','hint',(S.fx.sun===0?'Tap anywhere on the photo to place the sun. ':'Drag on the photo to move the sun. ')+(isPC()?'Scroll the mouse wheel to resize it (Ctrl + scroll zooms the photo).':'Pinch with two fingers to resize it.')));
+    const at=(x,y)=>({sunX:x,sunY:y,sun:S.fx.sun||.7});
+    quick([['Top left',at(0,0)],['Top',at(.5,0)],['Top right',at(1,0)],['Bottom left',at(0,1)],['Bottom right',at(1,1)],['Center',at(.5,.5)]]);
+  }
   if(fxGroup==='sun')quick([['Golden sun',{sun:.7,sunSize:.5,sunX:.85,sunY:.1,sunRays:.45,sunHue:40}],['Sunset',{sun:.8,sunSize:.7,sunX:.2,sunY:.45,sunRays:.2,sunHue:22}],['Morning haze',{sun:.6,sunSize:.9,sunX:.5,sunY:.0,sunRays:.3,sunHue:48}],['Light leak',{sun:.65,sunSize:.45,sunX:1,sunY:.35,sunRays:0,sunHue:14}],['Rose light',{sun:.6,sunSize:.6,sunX:.15,sunY:.15,sunRays:.2,sunHue:340}]]);
   for(const [key,label,min,max,def,cls] of FXG[fxGroup][1])
     p.append(slider({label,min,max,step:cls==='hue'?1:.01,get:()=>F[key],set:v=>F[key]=v,def,center:min<0?0:min,glr:FXGL.has(key),cls:cls||'',
