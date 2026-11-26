@@ -3,6 +3,7 @@
 const $=s=>document.querySelector(s);
 const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e};
 const clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
+const isPC=()=>document.body.classList.contains('pc');
 const buzz=()=>{try{navigator.vibrate&&navigator.vibrate(5)}catch{}};
 const nz=o=>Object.values(o).some(v=>v!==0);
 const ic=p=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
@@ -24,6 +25,9 @@ const ICON={
  rotR:ic('<path d="M20 4v6h-6"/><path d="M19.5 14a8 8 0 1 1-2-8L20 10"/>'),
  flip:ic('<path d="M12 3v18"/><path d="M8 7L3 17h5z"/><path d="M16 7l5 10h-5z"/>'),
  reset:ic('<path d="M4 12a8 8 0 1 0 3-6.2"/><path d="M4 4v5h5"/>'),
+ phone:ic('<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>'),
+ desktop:ic('<rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>'),
+ heal:ic('<rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="M10.3 10.3h.01M13.7 13.7h.01M10.3 13.7h.01M13.7 10.3h.01"/>'),
  x:ic('<path d="M6 6l12 12M18 6L6 18"/>')
 };
 const LOGO=(s,id,rx=112)=>`<svg width="${s}" height="${s}" viewBox="0 0 512 512" aria-label="Maskroom"><defs><linearGradient id="bg${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2a2d3a"/><stop offset="1" stop-color="#08090c"/></linearGradient><linearGradient id="ac${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7fd0ff"/><stop offset="1" stop-color="#b38cff"/></linearGradient></defs><rect width="512" height="512" rx="${rx}" fill="url(#bg${id})"/><circle cx="256" cy="256" r="118" fill="none" stroke="url(#ac${id})" stroke-width="26"/><path d="M256 138A118 118 0 0 0 256 374Z" fill="url(#ac${id})"/><path d="M372 120l7 18 18 7-18 7-7 18-7-18-18-7 18-7z" fill="#fff"/></svg>`;
@@ -37,7 +41,7 @@ const fresh=()=>({G:zeroAdj(),hsl:Array(24).fill(0),
   crv:{rgb:flat(),r:flat(),g:flat(),b:flat()},
   fx:{clarity:0,texture:0,dehaze:0,sharpen:0,shrRad:1,shrDet:.5,shrMask:0,dnL:0,dnC:0,
       vignette:0,vigMid:.6,vigFeather:.6,vigRound:.5,grain:0,grSize:1,grRough:.5,fade:0,defr:0},
-  look:{id:'none',amt:100},masks:[],items:[],
+  look:{id:'none',amt:100},masks:[],items:[],heals:[],
   geo:{rot:0,flip:false,angle:0,crop:{x:0,y:0,w:1,h:1},aspect:'free'},
   frame:{style:'none',size:6,color:'#ffffff',radius:0},
   logo:{on:false,useImg:false,text:'Your Brand',pos:'br',size:12,opacity:85}});
@@ -45,10 +49,12 @@ let S=fresh();
 let SW=0,SH=0,MW=0,MH=0,srcCanvas=null,loaded=false,mid=0;
 let tab='looks',colorMode='basic',grRange='sh',band=0,bwBand=0,overlayOn=true,brush='off',brushSize=56,comparing=false,fxGroup='detail';
 let selM=-1,adding=false,pickMode=false,pickPts=[],pickMask=-1,pickLabel=1,busy=false;
-let mEdit=false;const mRaw=()=>tab==='masks'&&(mEdit||pickMode);
+let mEdit=false;const mRaw=()=>(tab==='masks'&&(mEdit||pickMode))||tab==='heal';
 let addMode='text',selItem=-1,crvCh='rgb',drawCol='#ffffff',drawW=1.2;
 const cur={light:'exposure',color:'temp',fx:'clarity',frame:'size',brand:'size',mix:'0',mask:'exposure'};
 let customLut=null,logoImg=null,thumbURL={},crvDirty=true;
+let sctx=null,healMode='heal',healSize=40,cloneSrc=null,cloneOff=null,settingSrc=false,hid=0;
+const healCache=new Map(),healApplied=[];
 const hist=[],redoS=[];
 const selMask=()=>S.masks.find(m=>m.id===selM)||null;
 const isLine=m=>m.type==='linear'||m.type==='tilt';
@@ -59,7 +65,7 @@ function updHist(){$('#bUndo').disabled=!hist.length;$('#bRedo').disabled=!redoS
 function keepHist(d){hist.push(d);if(hist.length>80)hist.shift();redoS.length=0;updHist()}
 const pushHist=l=>keepHist(snap(l));
 const commit=d=>{keepHist(d.pend);d.moved=true};
-function restore(h){S=JSON.parse(h.s);S.masks.forEach((m,i)=>{m.d=h.bm[i]||null});crvDirty=true;lutUploaded=null;ensureSel();renderPanel();updHist();redraw(true)}
+function restore(h){S=JSON.parse(h.s);S.masks.forEach((m,i)=>{m.d=h.bm[i]||null});crvDirty=true;lutUploaded=null;ensureSel();syncHeal();renderPanel();updHist();redraw(true)}
 function undo(){if(!hist.length)return;const h=hist.pop(),r=snap();r.l=h.l;redoS.push(r);restore(h);toast('Undo: '+(h.l||'edit'),1200)}
 function redo(){if(!redoS.length)return;const h=redoS.pop(),r=snap();r.l=h.l;hist.push(r);restore(h);toast('Redo: '+(h.l||'edit'),1200)}
 let tt;function toast(m,ms=2400,spin=false){const t=$('#toast');t.innerHTML=(spin?'<i class="spin"></i>':'')+m;t.classList.add('on');clearTimeout(tt);if(ms)tt=setTimeout(()=>t.classList.remove('on'),ms)}
@@ -435,7 +441,7 @@ function passUniforms(p){
   }
 }
 function renderGL(full){
-  const sc=full?1:Math.min(1,1280/Math.max(SW,SH)),w=Math.round(SW*sc),h=Math.round(SH*sc);
+  const sc=full?1:Math.min(1,(isPC()?2600:1280)/Math.max(SW,SH)),w=Math.round(SW*sc),h=Math.round(SH*sc);
   if(wc.width!==w||wc.height!==h){wc.width=w;wc.height=h}
   ensureFBO(w,h);gl.viewport(0,0,w,h);syncLut();syncCrv();
   const sm=selMask();let ps;
@@ -444,7 +450,7 @@ function renderGL(full){
     ps=[{t:0}];
     for(const m of S.masks)if(nz(m.adj))ps.push({t:1,m});
     ps.push({t:2});
-    if(mRaw()&&overlayOn&&sm)ps.push({t:3,m:sm});
+    if(tab==='masks'&&mRaw()&&overlayOn&&sm)ps.push({t:3,m:sm});
   }
   let st=imgTex,fi=0;
   ps.forEach((p,i)=>{
@@ -590,7 +596,7 @@ function show(){
   const mode=tab==='crop'?'crop':mRaw()?'raw':'final';
   let tw,th;
   if(mode==='raw'){tw=SW;th=SH}else if(mode==='crop'){[tw,th]=frameDims()}else{const n=natural();tw=n.tw;th=n.th}
-  const aw=stage.clientWidth-24,ah=stage.clientHeight-24;if(aw<=0||ah<=0)return;
+  const pd=isPC()?64:24,aw=stage.clientWidth-pd,ah=stage.clientHeight-pd;if(aw<=0||ah<=0)return;
   const f=Math.min(aw/tw,ah/th),cw=Math.max(8,tw*f),ch=Math.max(8,th*f),dpr=Math.min(devicePixelRatio||1,2.5);
   const bw=Math.round(cw*dpr),bh=Math.round(ch*dpr);
   if(cv.width!==bw||cv.height!==bh){cv.width=bw;cv.height=bh}
@@ -598,6 +604,7 @@ function show(){
   const ctx=cv.getContext('2d');ctx.setTransform(1,0,0,1,0,0);compose(ctx,bw,bh,mode,true);
   if(mode==='crop')cropOverlay(ctx,bw,bh);
   if(mode==='raw'&&!pickMode)maskHandles(ctx,bw,bh);
+  if(mode==='raw'&&tab==='heal')healOverlay(ctx,bw,bh);
 }
 new ResizeObserver(()=>redraw()).observe(stage);
 
@@ -691,7 +698,7 @@ function geoUpdate(m,h,s,du,dv){
 }
 
 /* ================= pointer ================= */
-const ring=$('#ring');let drag=null,stroke=null,drawing=null;
+const ring=$('#ring');let drag=null,stroke=null,drawing=null,hs=null;
 const uv=e=>{const r=cv.getBoundingClientRect();return[(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height]};
 const toPhoto=(u,v)=>{const n=natural();return[(u*n.tw-n.m[3])/n.pw,(v*n.th-n.m[0])/n.ph]};
 function hitItem(x,y){
@@ -716,7 +723,7 @@ function strokeTo(e){
   else{const dx=x-stroke.x,dy=y-stroke.y,n=Math.max(1,Math.ceil(Math.hypot(dx,dy)/(rad*.35)));for(let i=1;i<=n;i++)stamp(m.d,stroke.x+dx*i/n,stroke.y+dy*i/n,rad,add)}
   stroke.x=x;stroke.y=y;m.v++;redraw(true);
 }
-function moveRing(e){ring.style.width=ring.style.height=brushSize+'px';ring.style.left=e.clientX+'px';ring.style.top=e.clientY+'px';ring.style.display='block'}
+function moveRing(e,sz=brushSize){ring.style.width=ring.style.height=sz+'px';ring.style.left=e.clientX+'px';ring.style.top=e.clientY+'px';ring.style.display='block'}
 cv.addEventListener('pointerdown',e=>{
   if(!loaded)return;const [u,v]=uv(e);
   if(tab==='crop'){
@@ -730,6 +737,13 @@ cv.addEventListener('pointerdown',e=>{
       pushHist();m.d=m.d?m.d.slice():new Uint8Array(MW*MH);
       stroke={x:null,y:null,m};cv.setPointerCapture(e.pointerId);moveRing(e);strokeTo(e);
     }
+  }else if(tab==='heal'){
+    if(busy)return;
+    const x=u*SW,y=v*SH;
+    if(healMode==='clone'&&settingSrc){cloneSrc={x,y};cloneOff=null;settingSrc=false;renderPanel();redraw();toast('Source set. Now paint where you want to copy to.');return}
+    if(healMode==='clone'&&!cloneSrc){toast('Tap "Set source", then tap the part of the photo to copy from.',3200);return}
+    if(healMode==='clone'&&!cloneOff)cloneOff=[cloneSrc.x-x,cloneSrc.y-y];
+    hs={pts:[[x,y]],mode:healMode};cv.setPointerCapture(e.pointerId);moveRing(e,healSize);redraw();
   }else if(tab==='add'){
     const [x,y]=toPhoto(u,v);
     if(addMode==='draw'){
@@ -757,9 +771,14 @@ cv.addEventListener('pointermove',e=>{
     }
   }else if(stroke){moveRing(e);strokeTo(e)}
   else if(drawing){const [x,y]=toPhoto(...uv(e));drawing.pts.push([x,y]);redraw()}
+  else if(hs){const [u,v]=uv(e);moveRing(e,healSize);hs.pts.push([u*SW,v*SH]);redraw()}
+  else if(e.pointerType==='mouse'&&tab==='heal'&&!settingSrc&&!busy)moveRing(e,healSize);
+  else if(e.pointerType==='mouse')ring.style.display='none';
 });
-const endDrag=()=>{drag=null;drawing=null;if(stroke){stroke=null;ring.style.display='none';renderPanel()}};
+const endDrag=()=>{drag=null;drawing=null;if(stroke){stroke=null;ring.style.display='none';renderPanel()}
+  if(hs){const s=hs;hs=null;ring.style.display='none';finishHeal(s).catch(e=>{console.error(e);busy=false;toast('Could not fill that area. Try a smaller stroke.',3500)})}};
 cv.addEventListener('pointerup',endDrag);cv.addEventListener('pointercancel',endDrag);
+cv.addEventListener('pointerleave',()=>{if(!hs&&!stroke)ring.style.display='none'});
 
 /* ================= UI components ================= */
 function chips(items,val,on,mods){
@@ -1042,17 +1061,17 @@ function logoPanel(p){
       slider({label:cur.brand==='size'?'Size':'Opacity',min:cur.brand==='size'?4:10,max:cur.brand==='size'?40:100,step:1,get:()=>L[cur.brand],set:v=>L[cur.brand]=v,def:cur.brand==='size'?12:85,fmt:v=>Math.round(v),center:cur.brand==='size'?4:10,glr:false}));
   }
 }
-const BUILD={looks:panelLooks,light:panelLight,color:panelColor,crv:panelCurves,fx:panelFx,masks:panelMasks,crop:panelCrop,frame:panelFrame,add:panelAdd};
+const BUILD={looks:panelLooks,light:panelLight,color:panelColor,crv:panelCurves,fx:panelFx,masks:panelMasks,heal:panelHeal,crop:panelCrop,frame:panelFrame,add:panelAdd};
 const panel=$('#panel');
 function renderPanel(reset){
   const old=panel.querySelector('.hrow'),sl=old?old.scrollLeft:0,st=panel.scrollTop;
   panel.innerHTML='';panel.append(BUILD[tab]());
   if(!reset){const nw=panel.querySelector('.hrow');if(nw)nw.scrollLeft=sl;panel.scrollTop=st}
 }
-const TABS=[['looks','Looks'],['light','Light'],['color','Color'],['crv','Curves'],['fx','Effects'],['masks','Masks'],['crop','Crop'],['frame','Frames'],['add','Add']];
+const TABS=[['looks','Looks'],['light','Light'],['color','Color'],['crv','Curves'],['fx','Effects'],['masks','Masks'],['heal','Heal'],['crop','Crop'],['frame','Frames'],['add','Add']];
 for(const [id,l] of TABS){const b=el('button','',ICON[id]+`<span>${l}</span>`);b.id='tab_'+id;b.setAttribute('role','tab');b.setAttribute('aria-selected',id===tab);b.onclick=()=>{buzz();setTab(id)};$('#tabs').append(b)}
 function setTab(id){
-  const ch=id!==tab;tab=id;if(ch){pickMode=false;pickPts=[];adding=false;selItem=-1;mEdit=false}
+  const ch=id!==tab;tab=id;if(ch){pickMode=false;pickPts=[];adding=false;selItem=-1;mEdit=false;settingSrc=false}
   for(const [i] of TABS)$('#tab_'+i).setAttribute('aria-selected',i===id);
   $('#tab_'+id).scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'});
   ring.style.display='none';renderPanel(ch);redraw(true);
@@ -1177,11 +1196,11 @@ async function openFile(file){
     const mt=Math.min(gl.getParameter(gl.MAX_TEXTURE_SIZE),3000),k=Math.min(1,mt/Math.max(bmp.width,bmp.height));
     SW=Math.round(bmp.width*k);SH=Math.round(bmp.height*k);
     srcCanvas=document.createElement('canvas');srcCanvas.width=SW;srcCanvas.height=SH;
-    srcCanvas.getContext('2d').drawImage(bmp,0,0,SW,SH);bmp.close&&bmp.close();
+    sctx=srcCanvas.getContext('2d',{willReadFrequently:true});sctx.drawImage(bmp,0,0,SW,SH);bmp.close&&bmp.close();
     gl.activeTexture(gl.TEXTURE7);gl.bindTexture(gl.TEXTURE_2D,imgTex);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,srcCanvas);
     const mk2=Math.min(1,1024/Math.max(SW,SH));MW=Math.round(SW*mk2);MH=Math.round(SH*mk2);
-    S=fresh();hist.length=0;redoS.length=0;brush='off';lutUploaded=null;crvDirty=true;
+    S=fresh();hist.length=0;redoS.length=0;healCache.clear();healApplied.length=0;cloneSrc=null;cloneOff=null;settingSrc=false;brush='off';lutUploaded=null;crvDirty=true;
     selM=-1;adding=false;pickMode=false;pickPts=[];pickMask=-1;segRes=null;samEmb=null;selItem=-1;updHist();
     makeThumbs();loaded=true;document.body.classList.remove('empty');
     setTab('looks');redraw(true);
@@ -1233,6 +1252,246 @@ async function doExport(share){
   }catch(e){console.error(e);redraw(true);toast('Export failed. Try a smaller size.',4000)}
 }
 
+/* ================= HEAL / CLONE ================= */
+/* HEAL-CORE-START */
+function dilateMask(m,w,h,r){
+  for(let it=0;it<r;it++){
+    const o=m.slice();
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      const i=y*w+x;if(o[i])continue;
+      if((x>0&&o[i-1])||(x<w-1&&o[i+1])||(y>0&&o[i-w])||(y<h-1&&o[i+w])||(x>0&&y>0&&o[i-w-1])||(x<w-1&&y>0&&o[i-w+1])||(x>0&&y<h-1&&o[i+w-1])||(x<w-1&&y<h-1&&o[i+w+1]))m[i]=1;
+    }
+  }
+}
+function paintStroke(buf,w,h,pts,rad){
+  const stepd=Math.max(1,rad*.3);let px=null,py=null;
+  const one=(cx,cy)=>{
+    const x0=Math.max(0,Math.floor(cx-rad)),x1=Math.min(w-1,Math.ceil(cx+rad)),y0=Math.max(0,Math.floor(cy-rad)),y1=Math.min(h-1,Math.ceil(cy+rad));
+    for(let j=y0;j<=y1;j++)for(let i=x0;i<=x1;i++){
+      const dd=Math.hypot(i-cx,j-cy);if(dd>rad)continue;
+      const v=Math.round(255*Math.min(1,(rad-dd)/(rad*.35+.001))),k=j*w+i;if(v>buf[k])buf[k]=v;
+    }
+  };
+  for(const [x,y] of pts){
+    if(px==null)one(x,y);
+    else{const dx=x-px,dy=y-py,n=Math.max(1,Math.ceil(Math.hypot(dx,dy)/stepd));for(let i=1;i<=n;i++)one(px+dx*i/n,py+dy*i/n)}
+    px=x;py=y;
+  }
+}
+/* smooth onion-peel fill: used as a fallback and for anything the patch search cannot reach */
+function diffuseFill(d,mask,w,h){
+  const known=new Uint8Array(w*h);let left=0,any=false;
+  for(let i=0;i<known.length;i++){if(mask[i])left++;else{known[i]=1;any=true}}
+  if(!any)return;
+  while(left>0){
+    const upd=[];
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      const i=y*w+x;if(known[i])continue;
+      let r=0,g=0,b=0,n=0;
+      for(let dy=-1;dy<=1;dy++){const yy=y+dy;if(yy<0||yy>=h)continue;
+        for(let dx=-1;dx<=1;dx++){const xx=x+dx;if(xx<0||xx>=w)continue;const j=yy*w+xx;if(!known[j])continue;r+=d[j*4];g+=d[j*4+1];b+=d[j*4+2];n++}}
+      if(n)upd.push(i,r/n,g/n,b/n);
+    }
+    if(!upd.length)break;
+    for(let k=0;k<upd.length;k+=4){const i=upd[k];d[i*4]=upd[k+1];d[i*4+1]=upd[k+2];d[i*4+2]=upd[k+3];d[i*4+3]=255;known[i]=1;left--}
+  }
+}
+/* soften the 1px seam where filled pixels meet the original */
+function smoothEdges(d,mask,w,h){
+  const o=new Uint8ClampedArray(d),edge=[];
+  for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=y*w+x;if(!mask[i])continue;if(!mask[i-1]||!mask[i+1]||!mask[i-w]||!mask[i+w])edge.push(i)}
+  for(const i of edge){
+    const x=i%w,y=(i-x)/w;let r=0,g=0,b=0;
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const j=((y+dy)*w+x+dx)*4;r+=o[j];g+=o[j+1];b+=o[j+2]}
+    d[i*4]=r/9;d[i*4+1]=g/9;d[i*4+2]=b/9;
+  }
+}
+/* exemplar-based inpainting (Criminisi et al.): fills the masked pixels in place by copying
+   the best-matching known patches, strongest edges and best-supported pixels first.
+   d = RGBA bytes, mask = 1 where pixels must be filled. Returns false if it could not run. */
+async function inpaint(d,mask,w,h,P,tick){
+  const half=P>>1,N=w*h;
+  const known=new Uint8Array(N),conf=new Float32Array(N),lum=new Float32Array(N),pri=new Float32Array(N);
+  let left=0;
+  for(let i=0;i<N;i++){if(mask[i])left++;else{known[i]=1;conf[i]=1}lum[i]=.299*d[i*4]+.587*d[i*4+1]+.114*d[i*4+2]}
+  if(!left)return true;
+  if(w<P||h<P)return false;
+  const W1=w+1,ps=new Int32Array(W1*(h+1));
+  for(let y=0;y<h;y++){let row=0;for(let x=0;x<w;x++){row+=mask[y*w+x];ps[(y+1)*W1+x+1]=ps[y*W1+x+1]+row}}
+  const all=[];
+  for(let y=0;y+P<=h;y++)for(let x=0;x+P<=w;x++)if(ps[(y+P)*W1+x+P]-ps[y*W1+x+P]-ps[(y+P)*W1+x]+ps[y*W1+x]===0)all.push(y*w+x);
+  if(!all.length)return false;
+  const MAXC=4000,cand=all.length<=MAXC?Int32Array.from(all):Int32Array.from({length:MAXC},(_,k)=>all[Math.floor(k*all.length/MAXC)]);
+  const pbx=x=>Math.min(Math.max(x-half,0),w-P),pby=y=>Math.min(Math.max(y-half,0),h-P);
+  const kn=(x,y)=>x>=0&&x<w&&y>=0&&y<h&&known[y*w+x]===1;
+  const hasKnownN=i=>{const x=i%w,y=(i-x)/w;return kn(x-1,y)||kn(x+1,y)||kn(x,y-1)||kn(x,y+1)};
+  const L=(x,y)=>lum[y*w+x];
+  const gradAt=(x,y,o)=>{
+    let gx=0,gy=0;
+    if(kn(x-1,y)&&kn(x+1,y))gx=(L(x+1,y)-L(x-1,y))/2;else if(kn(x+1,y))gx=L(x+1,y)-L(x,y);else if(kn(x-1,y))gx=L(x,y)-L(x-1,y);
+    if(kn(x,y-1)&&kn(x,y+1))gy=(L(x,y+1)-L(x,y-1))/2;else if(kn(x,y+1))gy=L(x,y+1)-L(x,y);else if(kn(x,y-1))gy=L(x,y)-L(x,y-1);
+    o[0]+=gx;o[1]+=gy;
+  };
+  const patchConf=(x0,y0)=>{let c=0;for(let yy=0;yy<P;yy++){const r=(y0+yy)*w+x0;for(let xx=0;xx<P;xx++)c+=conf[r+xx]}return c/(P*P)};
+  const priority=i=>{
+    const x=i%w,y=(i-x)/w,C=patchConf(pbx(x),pby(y)),g=[0,0];let n=0;
+    for(const [ox,oy] of [[-1,0],[1,0],[0,-1],[0,1]])if(kn(x+ox,y+oy)){gradAt(x+ox,y+oy,g);n++}
+    if(n){g[0]/=n;g[1]/=n}
+    let nx=(kn(x+1,y)?1:0)-(kn(x-1,y)?1:0),ny=(kn(x,y+1)?1:0)-(kn(x,y-1)?1:0);
+    const nl=Math.hypot(nx,ny)||1;nx/=nl;ny/=nl;
+    return C*(Math.abs(-g[1]*nx+g[0]*ny)/255+.001);
+  };
+  const front=new Set();
+  for(let i=0;i<N;i++)if(!known[i]&&hasKnownN(i))front.add(i);
+  if(!front.size)return false;
+  for(const i of front)pri[i]=priority(i);
+  const tIdx=new Int32Array(P*P),kOff=new Int32Array(P*P);
+  while(left>0&&front.size){
+    let bp=-1,bv=-1;for(const i of front)if(pri[i]>bv){bv=pri[i];bp=i}
+    const x=bp%w,y=(bp-x)/w,x0=pbx(x),y0=pby(y),Cp=patchConf(x0,y0),tb=y0*w+x0;
+    let nk=0;
+    for(let yy=0;yy<P;yy++)for(let xx=0;xx<P;xx++){const idx=tb+yy*w+xx;if(known[idx]){tIdx[nk]=idx;kOff[nk]=yy*w+xx;nk++}}
+    let best=Infinity,bi=-1;
+    for(let c=0;c<cand.length;c++){
+      const base=cand[c];let s=0;
+      for(let k=0;k<nk;k++){
+        const a=tIdx[k]*4,b=(base+kOff[k])*4,dr=d[a]-d[b],dg=d[a+1]-d[b+1],db=d[a+2]-d[b+2];
+        s+=dr*dr+dg*dg+db*db;if(s>=best)break;
+      }
+      if(s<best){best=s;bi=base}
+    }
+    if(bi<0)break;
+    /* colour-match the copied patch to what surrounds the hole (fixes gradients and exposure steps) */
+    let or=0,og=0,ob=0;
+    for(let k=0;k<nk;k++){const a=tIdx[k]*4,b=(bi+kOff[k])*4;or+=d[a]-d[b];og+=d[a+1]-d[b+1];ob+=d[a+2]-d[b+2]}
+    or=Math.max(-60,Math.min(60,or/nk));og=Math.max(-60,Math.min(60,og/nk));ob=Math.max(-60,Math.min(60,ob/nk));
+    for(let yy=0;yy<P;yy++)for(let xx=0;xx<P;xx++){
+      const off=yy*w+xx,idx=tb+off;if(known[idx])continue;
+      const s=(bi+off)*4,t=idx*4;d[t]=d[s]+or;d[t+1]=d[s+1]+og;d[t+2]=d[s+2]+ob;d[t+3]=255;
+      known[idx]=1;conf[idx]=Cp;lum[idx]=.299*d[t]+.587*d[t+1]+.114*d[t+2];left--;front.delete(idx);
+    }
+    const ax0=Math.max(0,x0-1),ay0=Math.max(0,y0-1),ax1=Math.min(w-1,x0+P),ay1=Math.min(h-1,y0+P);
+    for(let yy=ay0;yy<=ay1;yy++)for(let xx=ax0;xx<=ax1;xx++){const i=yy*w+xx;if(!known[i]&&hasKnownN(i))front.add(i)}
+    const bx0=Math.max(0,x0-half-1),by0=Math.max(0,y0-half-1),bx1=Math.min(w-1,x0+P+half),by1=Math.min(h-1,y0+P+half);
+    for(let yy=by0;yy<=by1;yy++)for(let xx=bx0;xx<=bx1;xx++){const i=yy*w+xx;if(front.has(i))pri[i]=priority(i)}
+    if(tick)await tick();
+  }
+  if(left>0){const rem=new Uint8Array(N);for(let i=0;i<N;i++)rem[i]=known[i]?0:1;diffuseFill(d,rem,w,h)}
+  return true;
+}
+/* HEAL-CORE-END */
+
+function uploadSrc(){
+  gl.activeTexture(gl.TEXTURE7);gl.bindTexture(gl.TEXTURE_2D,imgTex);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,srcCanvas);
+  segRes=null;samEmb=null;
+}
+/* Heal and clone edits change the source pixels. Each edit keeps a before/after patch, and
+   undo/redo/reset just walk the list of applied edits to match S.heals. */
+function syncHeal(){
+  if(!sctx)return;
+  const want=S.heals||[];let k=0,changed=false;
+  while(k<healApplied.length&&k<want.length&&healApplied[k]===want[k])k++;
+  for(let i=healApplied.length-1;i>=k;i--){const p=healCache.get(healApplied[i]);if(p)sctx.putImageData(p.before,p.x,p.y);changed=true}
+  healApplied.length=k;
+  for(let i=k;i<want.length;i++){const p=healCache.get(want[i]);if(!p)continue;sctx.putImageData(p.after,p.x,p.y);healApplied.push(want[i]);changed=true}
+  if(changed)uploadSrc();
+}
+function commitPatch(x,y,w,h,after){
+  const before=sctx.getImageData(x,y,w,h);
+  pushHist('Heal');
+  sctx.putImageData(after,x,y);
+  const id=++hid;healCache.set(id,{x,y,w,h,before,after});
+  S.heals.push(id);healApplied.push(id);
+  uploadSrc();redraw(true);
+}
+const mkTick=()=>{let t=performance.now();return async()=>{if(performance.now()-t>28){await new Promise(r=>setTimeout(r,0));t=performance.now()}}};
+async function finishHeal(s){
+  if(!s||!s.pts.length||!loaded||!sctx)return;
+  const rad=Math.max(2,healSize/2*SW/cv.clientWidth);
+  let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
+  for(const [x,y] of s.pts){minx=Math.min(minx,x);maxx=Math.max(maxx,x);miny=Math.min(miny,y);maxy=Math.max(maxy,y)}
+  const heal=s.mode==='heal',dil=heal?Math.max(2,Math.round(Math.max(SW,SH)/900)):0,pad=Math.ceil(rad+dil+2);
+  const bx=Math.max(0,Math.floor(minx-pad)),by=Math.max(0,Math.floor(miny-pad));
+  const bw=Math.min(SW,Math.ceil(maxx+pad))-bx,bh=Math.min(SH,Math.ceil(maxy+pad))-by;
+  if(bw<2||bh<2)return;
+  const buf=new Uint8Array(bw*bh);
+  paintStroke(buf,bw,bh,s.pts.map(([x,y])=>[x-bx,y-by]),rad);
+  if(!heal){
+    if(!cloneOff)return;
+    const dx=Math.round(cloneOff[0]),dy=Math.round(cloneOff[1]);
+    const dst=sctx.getImageData(bx,by,bw,bh),sd=sctx.getImageData(bx+dx,by+dy,bw,bh),a=dst.data,b=sd.data;
+    for(let i=0;i<buf.length;i++){
+      const al=buf[i]/255*(b[i*4+3]/255);if(al<=0)continue;
+      a[i*4]+=(b[i*4]-a[i*4])*al;a[i*4+1]+=(b[i*4+1]-a[i*4+1])*al;a[i*4+2]+=(b[i*4+2]-a[i*4+2])*al;
+    }
+    commitPatch(bx,by,bw,bh,dst);return;
+  }
+  const mask=new Uint8Array(bw*bh);let cnt=0;
+  for(let i=0;i<mask.length;i++)if(buf[i]>=128){mask[i]=1;cnt++}
+  if(!cnt)return;
+  busy=true;toast('Filling…',0,true);await new Promise(r=>setTimeout(r,30));
+  try{
+    dilateMask(mask,bw,bh,dil);
+    const M=Math.min(220,Math.max(40,Math.round(Math.max(bw,bh)*.9)));
+    const rx=Math.max(0,bx-M),ry=Math.max(0,by-M),rw=Math.min(SW,bx+bw+M)-rx,rh=Math.min(SH,by+bh+M)-ry;
+    const full=sctx.getImageData(rx,ry,rw,rh),fm=new Uint8Array(rw*rh),d=full.data;
+    for(let y=0;y<bh;y++)for(let x=0;x<bw;x++)if(mask[y*bw+x])fm[(y+by-ry)*rw+x+bx-rx]=1;
+    const f=Math.min(1,340/Math.max(rw,rh)),tick=mkTick();
+    if(f>=1){
+      if(!await inpaint(d,fm,rw,rh,9,tick))diffuseFill(d,fm,rw,rh);
+    }else{
+      /* big area: solve on a reduced copy, then scale the fill back up (softer detail inside the fill) */
+      const sw=Math.max(12,Math.round(rw*f)),sh=Math.max(12,Math.round(rh*f));
+      const c1=document.createElement('canvas');c1.width=sw;c1.height=sh;
+      const x1=c1.getContext('2d',{willReadFrequently:true});x1.imageSmoothingQuality='high';x1.drawImage(srcCanvas,rx,ry,rw,rh,0,0,sw,sh);
+      const small=x1.getImageData(0,0,sw,sh),sm=new Uint8Array(sw*sh);
+      for(let y=0;y<rh;y++)for(let x=0;x<rw;x++)if(fm[y*rw+x])sm[Math.min(sh-1,Math.floor(y*sh/rh))*sw+Math.min(sw-1,Math.floor(x*sw/rw))]=1;
+      dilateMask(sm,sw,sh,1);
+      if(!await inpaint(small.data,sm,sw,sh,11,tick))diffuseFill(small.data,sm,sw,sh);
+      x1.putImageData(small,0,0);
+      const c2=document.createElement('canvas');c2.width=rw;c2.height=rh;
+      const x2=c2.getContext('2d',{willReadFrequently:true});x2.imageSmoothingQuality='high';x2.drawImage(c1,0,0,rw,rh);
+      const up=x2.getImageData(0,0,rw,rh).data;
+      for(let i=0;i<fm.length;i++)if(fm[i]){d[i*4]=up[i*4];d[i*4+1]=up[i*4+1];d[i*4+2]=up[i*4+2]}
+    }
+    smoothEdges(d,fm,rw,rh);
+    const after=new ImageData(bw,bh);
+    for(let y=0;y<bh;y++)after.data.set(d.subarray(((y+by-ry)*rw+bx-rx)*4,((y+by-ry)*rw+bx-rx+bw)*4),y*bw*4);
+    commitPatch(bx,by,bw,bh,after);
+    toast(f<1?'Filled (large area: use short strokes for sharper detail)':'Filled',2200);
+  }finally{busy=false}
+}
+function healOverlay(ctx,w,h){
+  const k=w/cv.clientWidth,sx=w/SW,sy=h/SH,rad=healSize/2*k;
+  ctx.save();
+  if(hs){
+    ctx.strokeStyle='rgba(255,70,100,.55)';ctx.lineWidth=healSize*k;ctx.lineCap=ctx.lineJoin='round';ctx.beginPath();
+    hs.pts.forEach(([x,y],i)=>{i?ctx.lineTo(x*sx,y*sy):ctx.moveTo(x*sx,y*sy)});
+    if(hs.pts.length===1)ctx.lineTo(hs.pts[0][0]*sx+.01,hs.pts[0][1]*sy);
+    ctx.stroke();
+  }
+  if(healMode==='clone'&&cloneSrc){
+    let X=cloneSrc.x,Y=cloneSrc.y;
+    if(hs&&cloneOff){const q=hs.pts[hs.pts.length-1];X=q[0]+cloneOff[0];Y=q[1]+cloneOff[1]}
+    X*=sx;Y*=sy;ctx.strokeStyle='#fff';ctx.lineWidth=1.5*k;ctx.beginPath();ctx.arc(X,Y,rad,0,7);
+    ctx.moveTo(X-rad*.5,Y);ctx.lineTo(X+rad*.5,Y);ctx.moveTo(X,Y-rad*.5);ctx.lineTo(X,Y+rad*.5);ctx.stroke();
+  }
+  ctx.restore();
+}
+function panelHeal(){
+  const p=el('div','col');
+  p.append(seg([['heal','Heal'],['clone','Clone']],healMode,k=>{healMode=k;settingSrc=false;renderPanel();redraw()}),
+    slider({label:'Brush size',min:12,max:110,step:1,get:()=>healSize,set:v=>healSize=v,def:40,fmt:v=>Math.round(v),center:12,glr:false,nohist:true}));
+  if(healMode==='heal')p.append(el('p','hint','Paint over dust, wires, blemishes or small objects. Lift your finger and the area is filled from its surroundings. Short strokes work best; undo if it looks off.'));
+  else{
+    const b=el('button','btn',settingSrc?'Now tap the photo to pick the source…':cloneSrc?'Change source point':'Set source point');
+    b.setAttribute('aria-pressed',settingSrc);b.onclick=()=>{settingSrc=!settingSrc;renderPanel();redraw()};
+    p.append(b,el('p','hint','Pick a clean area to copy from, then paint where you want it copied to. The white circle shows what is being copied.'));
+  }
+  return p;
+}
+
 /* ================= wiring ================= */
 $('#bOpen').innerHTML=ICON.open;$('#bUndo').innerHTML=ICON.undo;$('#bRedo').innerHTML=ICON.redo;$('#bCmp').innerHTML=ICON.eye;
 $('#hlogo').innerHTML=LOGO(28,'h');$('#wlogo').innerHTML=LOGO(104,'w',24);
@@ -1240,7 +1499,7 @@ $('#bUndo').onclick=undo;$('#bRedo').onclick=redo;$('#bReset').innerHTML=ICON.re
 $('#bReset').onclick=()=>{
   if(!loaded)return;
   if(!confirm('Reset all edits on this photo? You can still undo this.'))return;
-  pushHist('Reset all');S=fresh();selM=-1;mEdit=false;selItem=-1;brush='off';crvDirty=true;lutUploaded=null;
+  pushHist('Reset all');S=fresh();syncHeal();selM=-1;mEdit=false;selItem=-1;brush='off';crvDirty=true;lutUploaded=null;
   renderPanel(true);redraw(true);toast('All edits reset. Tap Undo to bring them back.');
 };$('#bExport').onclick=openExport;
 $('#modal').onclick=e=>{if(e.target.id==='modal')$('#modal').classList.remove('on')};
@@ -1253,14 +1512,53 @@ $('#fLut').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)
   catch(err){toast(err.message,3500)}};
 $('#fLogo').onchange=e=>{const f=e.target.files[0];e.target.value='';if(!f)return;const im=new Image();
   im.onload=()=>{logoImg=im;S.logo.on=true;S.logo.useImg=true;renderPanel();redraw()};im.src=URL.createObjectURL(f)};
-const bc=$('#bCmp'),setC=v=>{if(!loaded)return;comparing=v;redraw(true)};
-bc.addEventListener('pointerdown',e=>{e.preventDefault();setC(true)});
-for(const ev of['pointerup','pointerleave','pointercancel'])bc.addEventListener(ev,()=>setC(false));
+const bc=$('#bCmp');let cmpLatched=false,cmpT=0,cmpSkip=false;
+const setC=v=>{if(!loaded)return;comparing=v;bc.style.color=v?'var(--acc)':'';bc.setAttribute('aria-pressed',v);redraw(true)};
+bc.addEventListener('pointerdown',e=>{e.preventDefault();
+  if(cmpLatched){cmpLatched=false;cmpSkip=true;setC(false);$('#toast').classList.remove('on');return}
+  cmpSkip=false;cmpT=Date.now();setC(true)});
+for(const ev of['pointerup','pointerleave','pointercancel'])bc.addEventListener(ev,()=>{
+  if(cmpSkip){if(ev==='pointerup')cmpSkip=false;return}
+  if(cmpLatched||!comparing)return;
+  if(ev==='pointerup'&&Date.now()-cmpT<250){cmpLatched=true;toast('Showing the original. Tap the eye again to go back.',0)}
+  else setC(false)});
 bc.addEventListener('contextmenu',e=>e.preventDefault());
 let dip=null;
 addEventListener('beforeinstallprompt',e=>{e.preventDefault();dip=e;$('#bInstall').hidden=false});
 $('#bInstall').onclick=async()=>{if(!dip)return;dip.prompt();await dip.userChoice;dip=null;$('#bInstall').hidden=true};
 addEventListener('appinstalled',()=>{$('#bInstall').hidden=true;toast('Maskroom installed')});
+
+/* ================= layout: phone / desktop ================= */
+const MODE_KEY='maskroom-layout';
+let layout='mob';
+function setLayout(m,quiet){
+  layout=m;document.body.classList.toggle('pc',m==='pc');document.body.classList.toggle('mob',m!=='pc');
+  try{localStorage.setItem(MODE_KEY,m)}catch{}
+  $('#bMode').innerHTML=m==='pc'?ICON.desktop:ICON.phone;
+  $('#bMode').setAttribute('aria-label',m==='pc'?'Desktop layout. Switch to phone layout':'Phone layout. Switch to desktop layout');
+  for(const b of document.querySelectorAll('#wmode button'))b.setAttribute('aria-pressed',b.dataset.k===m);
+  if(loaded){renderPanel();redraw(true)}
+  if(!quiet&&loaded)toast(m==='pc'?'Desktop layout':'Phone layout',1400);
+}
+(function initLayout(){
+  const w=$('#wmode');
+  for(const [k,l] of [['mob',ICON.phone+'Phone'],['pc',ICON.desktop+'Desktop']]){
+    const b=el('button','',l);b.dataset.k=k;b.onclick=()=>setLayout(k);w.append(b);
+  }
+  let m=null;try{m=localStorage.getItem(MODE_KEY)}catch{}
+  if(m!=='pc'&&m!=='mob')m=matchMedia('(min-width:900px) and (pointer:fine)').matches?'pc':'mob';
+  $('#bMode').onclick=()=>setLayout(layout==='pc'?'mob':'pc');
+  setLayout(m,true);
+})();
+/* desktop keyboard shortcuts */
+addEventListener('keydown',e=>{
+  if(!loaded||/^(INPUT|TEXTAREA)$/.test((e.target.tagName||'')))return;
+  const mod=e.ctrlKey||e.metaKey,k=e.key.toLowerCase();
+  if(mod&&k==='z'){e.preventDefault();e.shiftKey?redo():undo()}
+  else if(mod&&k==='y'){e.preventDefault();redo()}
+  else if(e.key==='\\'&&!e.repeat){e.preventDefault();setC(true)}
+});
+addEventListener('keyup',e=>{if(e.key==='\\'&&!cmpLatched)setC(false)});
 if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
 try{initGL()}catch(e){console.error(e);document.body.innerHTML='<p style="padding:24px">Sorry, this browser does not support WebGL.</p>'}
 renderPanel(true);
