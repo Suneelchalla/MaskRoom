@@ -1,4 +1,4 @@
-const V = 'maskroom-v10', CDN = 'maskroom-cdn', TF = 'transformers-cache', FONTS = 'maskroom-fonts';
+const V = 'maskroom-v11', CDN = 'maskroom-cdn', TF = 'transformers-cache', FONTS = 'maskroom-fonts';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
